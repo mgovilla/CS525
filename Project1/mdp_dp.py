@@ -1,6 +1,8 @@
 ### MDP Value Iteration and Policy Iteration
 ### Reference: https://web.stanford.edu/class/cs234/assignment1/index.html 
+from hashlib import new
 import numpy as np
+from gym.core import Env
 
 np.set_printoptions(precision=3)
 
@@ -49,10 +51,20 @@ def policy_evaluation(P, nS, nA, policy, gamma=0.9, tol=1e-8):
     """
     
     value_function = np.zeros(nS)
-    ############################
-    # YOUR IMPLEMENTATION HERE #
     
-    ############################
+    delta = tol
+    while delta >= tol:
+        # assume the value table will not change
+        delta = 0
+        # evaluate each state
+        for s in range(nS):
+            # get original value
+            v = value_function[s]
+            # new value is the expected value of taking an action at state s
+            value_function[s] = sum(policy[s][a]*sum(p*(r + gamma*value_function[s_prime]) for p,s_prime,r,_ in P[s][a]) for a in range(nA))
+            # did the values change?
+            delta = max(delta, abs(value_function[s] - v))
+
     return value_function
 
 
@@ -74,12 +86,15 @@ def policy_improvement(P, nS, nA, value_from_policy, gamma=0.9):
     """
 
     new_policy = np.ones([nS, nA]) / nA
-	############################
-	# YOUR IMPLEMENTATION HERE #
+    for s in range(nS):
+        # pa = max(range(nA), key=lambda x: new_policy[s][x])
+        new_action = max(range(nA), key=lambda a: sum(p*(r + gamma*value_from_policy[s_prime]) for p,s_prime,r,_ in P[s][a]))
+        new_policy[s] = np.zeros(nA)
+        new_policy[s][new_action] = 1
 
-	############################
+        # stable = max(range(nA), key=lambda x: new_policy[s][x]) == pa
+
     return new_policy
-
 
 def policy_iteration(P, nS, nA, policy, gamma=0.9, tol=1e-8):
     """Runs policy iteration.
@@ -100,10 +115,14 @@ def policy_iteration(P, nS, nA, policy, gamma=0.9, tol=1e-8):
     V: np.ndarray[nS]
     """
     new_policy = policy.copy()
-	############################
-	# YOUR IMPLEMENTATION HERE #
+    V = np.zeros(nS)
+    stable = False
+    while not stable:
+        V = policy_evaluation(P, nS, nA, new_policy, gamma, tol)
+        temp = policy_improvement(P, nS, nA, V, gamma)
+        stable = np.array_equal(temp, new_policy)
+        new_policy = temp
 
-	############################
     return new_policy, V
 
 def value_iteration(P, nS, nA, V, gamma=0.9, tol=1e-8):
@@ -126,13 +145,23 @@ def value_iteration(P, nS, nA, V, gamma=0.9, tol=1e-8):
     """
     
     V_new = V.copy()
-    ############################
-    # YOUR IMPLEMENTATION HERE #
+    delta = tol
+    while delta >= tol:
+        delta = 0
+        for s in range(nS):
+            v = V_new[s]
+            V_new[s] =  max(sum(p*(r + gamma*V_new[s_prime]) for p,s_prime,r,_ in P[s][a]) for a in range(nA))
+            delta = max(delta, abs(v - V_new[s]))
+    
+    policy_new = np.zeros([nS, nA])
+    for s in range(nS):
+        new_action = max(range(nA), key=lambda a: sum(p*(r + gamma*V_new[s_prime]) for p,s_prime,r,_ in P[s][a]))
+        policy_new[s] = np.zeros(nA)
+        policy_new[s][new_action] = 1
 
-    ############################
     return policy_new, V_new
 
-def render_single(env, policy, render = False, n_episodes=100):
+def render_single(env: Env, policy, render = False, n_episodes=100):
     """
     Given a game envrionemnt of gym package, play multiple episodes of the game.
     An episode is over when the returned value for "done" = True.
@@ -160,8 +189,12 @@ def render_single(env, policy, render = False, n_episodes=100):
         while not done:
             if render:
                 env.render() # render the game
-            ############################
-            # YOUR IMPLEMENTATION HERE #
+            
+            # choose an action based on ob
+            new_action = max(range(env.action_space.n), key=lambda a: policy[ob][a])
+            ob, reward, terminated, _, _ = env.step(new_action)
+            total_rewards += reward
+            done = terminated
             
     return total_rewards
 
