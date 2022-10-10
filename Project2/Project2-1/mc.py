@@ -36,7 +36,7 @@ def initial_policy(observation):
     # action
 
     ############################
-    return action
+    return int(score < 20)
 
 def mc_prediction(policy, env, n_episodes, gamma = 1.0):
     """Given policy using sampling to calculate the value function

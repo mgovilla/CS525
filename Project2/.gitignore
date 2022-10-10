@@ -1,0 +1,6 @@
+Lib/
+Man/
+pyvenv.cfg
+man/
+Scripts/
+*.pyc
