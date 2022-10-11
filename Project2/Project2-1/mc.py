@@ -1,8 +1,10 @@
 #!/usr/bin/env python3
 # -*- coding: utf-8 -*-
+from unittest import result
 import numpy as np
 import random
 from collections import defaultdict
+from gym import Env
 #-------------------------------------------------------------------------
 '''
     Monte-Carlo
@@ -32,13 +34,13 @@ def initial_policy(observation):
     ############################
     # YOUR IMPLEMENTATION HERE #
     # get parameters from observation
-    score, dealer_score, usable_ace = observation
-    # action
-
     ############################
+    
+    score, dealer_score, usable_ace = observation
+
     return int(score < 20)
 
-def mc_prediction(policy, env, n_episodes, gamma = 1.0):
+def mc_prediction(policy, env: Env, n_episodes: int, gamma = 1.0):
     """Given policy using sampling to calculate the value function
         by using Monte Carlo first visit algorithm.
 
@@ -62,48 +64,38 @@ def mc_prediction(policy, env, n_episodes, gamma = 1.0):
     # initialize empty dictionaries
     returns_sum = defaultdict(float)
     returns_count = defaultdict(float)
+
     # a nested dictionary that maps state -> value
     V = defaultdict(float)
+    
+    # generating episodes
+    for _ in range(n_episodes):
+        observation = env.reset()
+        episode, terminated = [], False
+        while not terminated:
+            action = policy(observation)
+            result, reward, terminated, truncated, info = env.step(action)
+            episode.append((observation, action, reward))
+            observation = result
+        
+        G = 0
+        for t in range(len(episode)-1, -1, -1):
+            G = gamma*G + episode[t][2] 
 
-    ############################
-    # YOUR IMPLEMENTATION HERE #
-    # loop each episode
+            if is_first_visit(episode, t):
+                state = episode[t][0]
+                returns_count[state] += 1
+                returns_sum[state] += G
 
-        # initialize the episode
-
-        # generate empty episode list
-
-        # loop until episode generation is done
-
-
-            # select an action
-
-            # return a reward and new state
-
-            # append state, action, reward to episode
-
-            # update state to new state
-
-
-
-
-        # loop for each step of episode, t = T-1, T-2,...,0
-
-            # compute G
-
-            # unless state_t appears in states
-
-                # update return_count
-
-                # update return_sum
-
-                # calculate average return for this state over all sampled episodes
-
-
-
-    ############################
+                V[state] = returns_sum[state] / returns_count[state]
 
     return V
+
+def is_first_visit(episode, t):
+    return all(map(lambda e: e[0]!=episode[t][0], episode[:t]))
+
+def is_first_visit_Q(episode, t):
+    return all(map(lambda e: e[0]!=episode[t][0] and e[1]!=episode[t][1], episode[:t]))
 
 def epsilon_greedy(Q, state, nA, epsilon = 0.1):
     """Selects epsilon-greedy action for supplied state.
@@ -129,14 +121,11 @@ def epsilon_greedy(Q, state, nA, epsilon = 0.1):
     With probability (1 − epsilon) choose the greedy action.
     With probability epsilon choose an action at random.
     """
-    ############################
-    # YOUR IMPLEMENTATION HERE #
-
-
-
-
-    ############################
-    return action
+    if random.random() > epsilon:
+        # normal action
+        return max(range(nA), key=lambda a: Q[state][a])
+    
+    return random.randint(0, nA-1)
 
 def mc_control_epsilon_greedy(env, n_episodes, gamma = 1.0, epsilon = 0.1):
     """Monte Carlo control with exploring starts.
@@ -169,40 +158,26 @@ def mc_control_epsilon_greedy(env, n_episodes, gamma = 1.0, epsilon = 0.1):
     # e.g. Q[state] = np.darrary(nA)
     Q = defaultdict(lambda: np.zeros(env.action_space.n))
 
-    ############################
-    # YOUR IMPLEMENTATION HERE #
+     # generating episodes
+    for t in range(n_episodes):
+        epsilon -= 1 / n_episodes
+        observation = env.reset()
+        episode, terminated = [], False
+        while not terminated:
+            action = epsilon_greedy(Q, observation, env.action_space.n, epsilon)
+            result, reward, terminated, truncated, info = env.step(action)
+            episode.append((observation, action, reward))
+            observation = result
+        
+        G = 0
+        for t in range(len(episode)-1, -1, -1):
+            G = gamma*G + episode[t][2] 
 
-        # define decaying epsilon
+            if is_first_visit_Q(episode, t):
+                state, action, _ = episode[t]
+                returns_count[(state, action)] += 1
+                returns_sum[(state, action)] += G
 
-
-
-        # initialize the episode
-
-        # generate empty episode list
-
-        # loop until one episode generation is done
-
-
-            # get an action from epsilon greedy policy
-
-            # return a reward and new state
-
-            # append state, action, reward to episode
-
-            # update state to new state
-
-
-
-        # loop for each step of episode, t = T-1, T-2, ...,0
-
-            # compute G
-
-            # unless the pair state_t, action_t appears in <state action> pair list
-
-                # update return_count
-
-                # update return_sum
-
-                # calculate average return for this state over all sampled episodes
+                Q[state][action] = returns_sum[(state, action)] / returns_count[(state, action)]
 
     return Q
