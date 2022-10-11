@@ -38,15 +38,11 @@ def epsilon_greedy(Q, state, nA, epsilon = 0.1):
      Hints:
         You can use the function from project2-1
     """
-    ############################
-    # YOUR IMPLEMENTATION HERE #
-
-
-
-
-
-    ############################
-    return action
+    if random.random() > epsilon:
+        # normal action
+        return max(range(nA), key=lambda a: Q[state][a])
+    
+    return random.randint(0, nA-1)
 
 def sarsa(env, n_episodes, gamma=1.0, alpha=0.5, epsilon=0.1):
     """On-policy TD control. Find an optimal epsilon-greedy policy.
@@ -77,39 +73,20 @@ def sarsa(env, n_episodes, gamma=1.0, alpha=0.5, epsilon=0.1):
     # e.g. Q[state] = np.darrary(nA)
     Q = defaultdict(lambda: np.zeros(env.action_space.n))
     
-    ############################
-    # YOUR IMPLEMENTATION HERE #
-    
-    # loop n_episodes
-
-        # define decaying epsilon
-
-
-        # initialize the environment 
-
-        
-        # get an action from policy
-
-        # loop for each step of episode
-
-            # return a new state, reward and done
-
-            # get next action
-
+    # generating episodes
+    for _ in range(n_episodes):
+        epsilon = 0.99*epsilon
+        s = env.reset()
+        a = epsilon_greedy(Q, s, env.action_space.n, epsilon)
+        terminated = False
+        while not terminated:
+            s_prime, r, terminated, truncated, info = env.step(a)
+            a_prime = epsilon_greedy(Q, s_prime, env.action_space.n, epsilon)
             
-            # TD update
-            # td_target
+            Q[s][a] += alpha*(r + gamma*Q[s_prime][a_prime] - Q[s][a])
 
-            # td_error
-
-            # new Q
-
+            s, a = s_prime, a_prime
             
-            # update state
-
-            # update action
-
-    ############################
     return Q
 
 def q_learning(env, n_episodes, gamma=1.0, alpha=0.5, epsilon=0.1):
@@ -137,28 +114,17 @@ def q_learning(env, n_episodes, gamma=1.0, alpha=0.5, epsilon=0.1):
     # e.g. Q[state] = np.darrary(nA)
     Q = defaultdict(lambda: np.zeros(env.action_space.n))
     
-    ############################
-    # YOUR IMPLEMENTATION HERE #
-    
-    # loop n_episodes
-
-        # initialize the environment 
-
-        
-        # loop for each step of episode
-
-            # get an action from policy
+   # generating episodes
+    for _ in range(n_episodes):
+        epsilon = 0.99*epsilon
+        s = env.reset()
+        terminated = False
+        while not terminated:
+            a = epsilon_greedy(Q, s, env.action_space.n, epsilon)
+            s_prime, r, terminated, truncated, info = env.step(a)
             
-            # return a new state, reward and done
+            Q[s][a] += alpha*(r + gamma*Q[s_prime][np.argmax(Q[s_prime])] - Q[s][a])
+
+            s = s_prime
             
-            # TD update
-            # td_target with best Q
-
-            # td_error
-
-            # new Q
-            
-            # update state
-
-    ############################
     return Q
