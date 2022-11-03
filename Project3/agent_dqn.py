@@ -58,20 +58,19 @@ class Agent_DQN(Agent):
 
         # create replay buffer
         self.buffer = deque(maxlen=10000)
+        self.batch_size = 32 
 
         # constants
-        self.UPDATE_TARGET_FREQ = 50
+        self.UPDATE_TARGET_FREQ = 100
         self.gamma = 0.9
-        self.iterations = 500
-        self.TRAIN_STEPS = 2000
+        self.iterations = 1000
         
         # epsilon
         self.epsilon = 1.0
-        self.decay_rate = (self.epsilon - 0.025) / self.TRAIN_STEPS
-
+        self.decay_rate = (self.epsilon - 0.025) / (self.iterations * 4)
 
     def decay_epsilon(self):
-        self.epsilon -= max(self.decay_rate, 0.025)
+        self.epsilon =  max(self.epsilon - self.decay_rate, 0.025)
 
     def init_game_setting(self):
         """
@@ -127,6 +126,41 @@ class Agent_DQN(Agent):
 
         return random.sample(self.buffer, batch_size)
 
+    def optimize_model(self, optimizer):
+        if len(self.buffer) < self.batch_size:
+            return
+
+        transitions = random.sample(self.buffer, self.batch_size)
+        batch = [*zip(*transitions)]
+
+        # Compute a mask of non-final states and concatenate the batch elements
+        # (a final state would've been the one after which simulation ended)
+        non_final_mask = torch.tensor(tuple(map(lambda s: s is not None,
+                                            batch[3])), device=self.device, dtype=torch.bool)
+        non_final_next_states = torch.cat([s for s in batch[3]
+                                                    if s is not None])
+        state_batch = torch.cat(batch[0])
+        action_batch = torch.cat(batch[1])
+        reward_batch = torch.cat(batch[2])
+
+        state_action_values = self.policy_net(state_batch).gather(1, action_batch)
+
+        next_state_values = torch.zeros(self.batch_size, device=self.device)
+        next_state_values[non_final_mask] = self.target_net(non_final_next_states).max(1)[0].detach()
+        # Compute the expected Q values
+        expected_state_action_values = (next_state_values * self.gamma) + reward_batch
+
+        # Compute Huber loss
+        criterion = torch.nn.SmoothL1Loss()
+        loss = criterion(state_action_values, expected_state_action_values.unsqueeze(1))
+
+        # Optimize the model
+        optimizer.zero_grad()
+        loss.backward()
+        for param in self.policy_net.parameters():
+            param.grad.data.clamp_(-1, 1)
+        optimizer.step()
+
     def train(self):
         """
         start with policy_net = target_net
@@ -158,30 +192,15 @@ class Agent_DQN(Agent):
                 next_state, reward, done, _, _ = self.env.step(action.item())
                 total_reward += reward
                 # record (s, a, r, s')
-                self.push((state, action.item(), reward,
-                          next_state if not done else None))
+                self.push(
+                    (torch.tensor(np.array([state.transpose()]), device=self.device, dtype=torch.float), 
+                    action,
+                    torch.tensor([reward], device=self.device, dtype=torch.float),
+                    torch.tensor(np.array([next_state.transpose()]), device=self.device, dtype=torch.float) if not done else None))
+                
+                state = next_state
 
-                # sample from the buffer
-                s, a, r, s_p = self.replay_buffer(self.batch_size)
-
-                # calculate the error of the existing policy to the target
-                # existing output
-                existing_out = self.policy_net(torch.tensor(np.array([s.transpose()]), device=self.device, dtype=torch.float))
-
-                y = r * torch.tensor(np.ones((1, self.env.get_action_space().n)), device=self.device, dtype=torch.float)
-                if s_p is not None:
-                    # add discounted future reward 
-                    y = r + self.gamma*self.target_net(torch.tensor(np.array([s_p.transpose()]), device=self.device, dtype=torch.float))
-
-                # Compute Huber loss
-                criterion = torch.nn.SmoothL1Loss()
-                loss = criterion(existing_out, y)
-
-                optimizer.zero_grad()
-                loss.backward()
-                for param in self.policy_net.parameters():
-                    param.grad.data.clamp_(-1, 1)
-                optimizer.step()
+                self.optimize_model(optimizer)
 
             episode_rewards.append(total_reward)
 
