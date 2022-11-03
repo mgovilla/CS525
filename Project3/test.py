@@ -75,10 +75,10 @@ def run(args):
 
     record_video: (bool) whether you need to record video
     '''
-    env = Environment('BreakoutNoFrameskip-v4', args, atari_wrapper=True, test=True, render_mode=None)
+    env = Environment('BreakoutNoFrameskip-v4', args, atari_wrapper=True, test=True, render_mode='human')
     from agent_dqn import Agent_DQN
     agent = Agent_DQN(env, args)
-    test(agent, env, total_episodes=100, record_video=False)
+    test(agent, env, total_episodes=10, record_video=False)
 
 
 if __name__ == '__main__':

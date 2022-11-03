@@ -15,7 +15,7 @@ class DQN(nn.Module):
     This is just a hint. You can build your own structure.
     """
 
-    def __init__(self, in_channels=4, num_actions=4):
+    def __init__(self, in_size_w, in_size_h, in_channels=4, num_actions=4, device="cpu"):
         """
         Parameters:
         -----------
@@ -28,8 +28,19 @@ class DQN(nn.Module):
         member variables.
         """
         super(DQN, self).__init__()
-        ###########################
-        # YOUR IMPLEMENTATION HERE #
+        KERNEL_SIZE=3
+        self.device = device
+        self.conv1 = nn.Conv2d(in_channels, 24, KERNEL_SIZE)
+        self.bn1 = nn.BatchNorm2d(24)
+        conv1_w = in_size_w - KERNEL_SIZE + 1
+        conv1_h = in_size_h - KERNEL_SIZE + 1
+
+        self.conv2 = nn.Conv2d(24, 64, KERNEL_SIZE)
+        self.bn2 = nn.BatchNorm2d(64)
+        conv2_w = conv1_w - KERNEL_SIZE + 1
+        conv2_h = conv1_h - KERNEL_SIZE + 1
+
+        self.head = nn.Linear(64*conv2_w*conv2_h, num_actions)
 
     def forward(self, x):
         """
@@ -37,8 +48,7 @@ class DQN(nn.Module):
         a Tensor of output data. We can use Modules defined in the constructor as
         well as arbitrary operators on Tensors.
         """
-        ###########################
-        # YOUR IMPLEMENTATION HERE #
-
-        ###########################
-        return x
+        x = x.to(self.device)
+        x = F.relu(self.bn1(self.conv1(x)))
+        x = F.relu(self.bn2(self.conv2(x)))
+        return self.head(x.view(x.size(0), -1))

@@ -7,7 +7,7 @@ DO NOT revise this file
 from environment import Environment
 
 class Agent(object):
-    def __init__(self, env):
+    def __init__(self, env: Environment):
         self.env = env
 
 
