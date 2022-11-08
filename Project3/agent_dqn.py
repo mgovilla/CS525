@@ -40,7 +40,7 @@ class Agent_DQN(Agent):
             # you can load your model here
             print('loading trained model')
             self.trained = True
-            self.policy_net = torch.load(f="trained_policy_001.pth")
+            self.policy_net = torch.load(f="trained_policy_2000.pth")
             self.policy_net.eval()
             return
 
@@ -57,17 +57,17 @@ class Agent_DQN(Agent):
         self.trained = False
 
         # create replay buffer
-        self.buffer = deque(maxlen=10000)
-        self.batch_size = 32 
+        self.buffer = deque(maxlen=100000)
+        self.batch_size = 128 
 
         # constants
-        self.UPDATE_TARGET_FREQ = 100
-        self.gamma = 0.9
-        self.iterations = 1000
+        self.UPDATE_TARGET_FREQ = 500
+        self.gamma = 0.99
+        self.iterations = 10000
         
         # epsilon
         self.epsilon = 1.0
-        self.decay_rate = (self.epsilon - 0.025) / (self.iterations * 4)
+        self.decay_rate = (self.epsilon - 0.025) / (self.iterations * 30)
 
     def decay_epsilon(self):
         self.epsilon =  max(self.epsilon - self.decay_rate, 0.025)
@@ -84,7 +84,9 @@ class Agent_DQN(Agent):
         with torch.no_grad():
             # get max reward action
             actions = self.policy_net(torch.tensor(np.array([observation.transpose()]), device=self.device, dtype=torch.float))
-            return actions.max(1)[1].view(1, 1).item()
+            a = actions.max(1)[1].view(1, 1).item()
+            print(a, actions)
+            return a
 
     def make_action(self, observation, test=True):
         """
@@ -97,17 +99,18 @@ class Agent_DQN(Agent):
                 the predicted action from trained model
         """
         if test:
-            return self.make_action_test(observation)
+            action = self.make_action_test(observation)
+            return action
 
         # epsilon greedy
         p = random.random()
         if p > self.epsilon:
             with torch.no_grad():
                 # get max reward action
-                actions = self.policy_net(torch.tensor(np.array([observation.transpose()]), device=self.device, dtype=torch.float))
+                actions = self.policy_net(torch.tensor(np.array([observation.transpose()]), device=self.device, dtype=torch.float)).to("cpu")
                 return actions.max(1)[1].view(1, 1)
 
-        return torch.tensor([[random.randrange(self.env.get_action_space().n)]], device=self.device, dtype=torch.long)
+        return torch.tensor([[random.randrange(self.env.get_action_space().n)]], device="cpu", dtype=torch.long)
 
     def push(self, sars: Tuple):
         """ You can add additional arguments as you need. 
@@ -138,10 +141,10 @@ class Agent_DQN(Agent):
         non_final_mask = torch.tensor(tuple(map(lambda s: s is not None,
                                             batch[3])), device=self.device, dtype=torch.bool)
         non_final_next_states = torch.cat([s for s in batch[3]
-                                                    if s is not None])
-        state_batch = torch.cat(batch[0])
-        action_batch = torch.cat(batch[1])
-        reward_batch = torch.cat(batch[2])
+                                                    if s is not None]).to(self.device)
+        state_batch = torch.cat(batch[0]).to(self.device)
+        action_batch = torch.cat(batch[1]).to(self.device)
+        reward_batch = torch.cat(batch[2]).to(self.device)
 
         state_action_values = self.policy_net(state_batch).gather(1, action_batch)
 
@@ -155,11 +158,18 @@ class Agent_DQN(Agent):
         loss = criterion(state_action_values, expected_state_action_values.unsqueeze(1))
 
         # Optimize the model
+        a = list(self.policy_net.parameters())[0].clone()
+
         optimizer.zero_grad()
         loss.backward()
         for param in self.policy_net.parameters():
             param.grad.data.clamp_(-1, 1)
         optimizer.step()
+
+        b = list(self.policy_net.parameters())[0].clone()
+
+        print(torch.equal(a.data, b.data))
+        print(torch.equal(a.grad, b.grad))
 
     def train(self):
         """
@@ -175,9 +185,9 @@ class Agent_DQN(Agent):
             every C iterations, set target_net = policy_net
         """
 
-        optimizer = optim.RMSprop(self.policy_net.parameters())
+        optimizer = optim.Adam(self.policy_net.parameters(), lr=0.00025)
         episode_rewards = []
-        for n in range(self.iterations):
+        for n in range(1, self.iterations+1):
             state = self.env.reset()
             total_reward = 0
             # play an episode (until termination)
@@ -193,10 +203,10 @@ class Agent_DQN(Agent):
                 total_reward += reward
                 # record (s, a, r, s')
                 self.push(
-                    (torch.tensor(np.array([state.transpose()]), device=self.device, dtype=torch.float), 
+                    (torch.tensor(np.array([state.transpose()]), device="cpu", dtype=torch.float), 
                     action,
-                    torch.tensor([reward], device=self.device, dtype=torch.float),
-                    torch.tensor(np.array([next_state.transpose()]), device=self.device, dtype=torch.float) if not done else None))
+                    torch.tensor([reward], device="cpu", dtype=torch.float),
+                    torch.tensor(np.array([next_state.transpose()]), device="cpu", dtype=torch.float) if not done else None))
                 
                 state = next_state
 
@@ -205,7 +215,12 @@ class Agent_DQN(Agent):
             episode_rewards.append(total_reward)
 
             if n % self.UPDATE_TARGET_FREQ == 0:
+                print('updated target net')
+                print('overall average: ', np.average(episode_rewards))
+                print('epsilon: ', self.epsilon)
+                print('replay memory size: ', len(self.buffer))
                 self.target_net.load_state_dict(self.policy_net.state_dict())
+                torch.save(self.policy_net, f"trained_policy_{n}.pth")
 
         print(episode_rewards)
-        torch.save(self.policy_net, "trained_policy_001.pth")
+        torch.save(self.policy_net, "trained_policy_final.pth")

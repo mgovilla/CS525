@@ -3,3 +3,6 @@ lib
 lib64
 share
 bin
+*.pth
+data
+include

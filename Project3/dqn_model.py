@@ -2,7 +2,7 @@
 # -*- coding: utf-8 -*-
 import torch.nn as nn
 import torch.nn.functional as F
-
+import torch
 
 class DQN(nn.Module):
     """Initialize a deep Q-learning network
@@ -28,19 +28,38 @@ class DQN(nn.Module):
         member variables.
         """
         super(DQN, self).__init__()
-        KERNEL_SIZE=3
         self.device = device
-        self.conv1 = nn.Conv2d(in_channels, 24, KERNEL_SIZE)
-        self.bn1 = nn.BatchNorm2d(24)
-        conv1_w = in_size_w - KERNEL_SIZE + 1
-        conv1_h = in_size_h - KERNEL_SIZE + 1
 
-        self.conv2 = nn.Conv2d(24, 64, KERNEL_SIZE)
-        self.bn2 = nn.BatchNorm2d(64)
-        conv2_w = conv1_w - KERNEL_SIZE + 1
-        conv2_h = conv1_h - KERNEL_SIZE + 1
+        # Network defined by the Deepmind paper
 
-        self.head = nn.Linear(64*conv2_w*conv2_h, num_actions)
+        # Convolutions on the frames on the screen
+        # [(W−K+2P)/S]+1
+        self.layer1 = nn.Conv2d(in_channels, 32, 8, 4)
+        conv1_w = (in_size_w - 8) // 4 + 1
+        conv1_h = (in_size_h - 8) // 4 + 1
+        
+        self.layer2 = nn.Conv2d(32, 64, 4, 2)
+        conv2_w = (conv1_w - 4) // 2 + 1
+        conv2_h = (conv1_h - 4) // 2 + 1
+
+        self.layer3 = nn.Conv2d(64, 64, 3, 1)
+        conv3_w = (conv2_w - 3) + 1
+        conv3_h = (conv2_h - 3) + 1
+
+        self.layer4 = nn.Flatten()
+
+        self.layer5 = nn.Linear(64 * conv3_w * conv3_h, 512)
+        self.action = nn.Linear(512, num_actions)
+
+
+        # KERNEL_SIZE=3
+        # self.conv1 = nn.Conv2d(in_channels, 16, KERNEL_SIZE)
+        # conv1_w = in_size_w - KERNEL_SIZE + 1
+        # conv1_h = in_size_h - KERNEL_SIZE + 1
+
+        # self.flatten = nn.Flatten()
+        # self.fc1 = nn.Linear(16*conv1_w*conv1_h, 512)
+        # self.fc2 = nn.Linear(512, num_actions)
 
     def forward(self, x):
         """
@@ -49,6 +68,10 @@ class DQN(nn.Module):
         well as arbitrary operators on Tensors.
         """
         x = x.to(self.device)
-        x = F.relu(self.bn1(self.conv1(x)))
-        x = F.relu(self.bn2(self.conv2(x)))
-        return self.head(x.view(x.size(0), -1))
+        x = F.relu(self.layer1(x))
+        x = F.relu(self.layer2(x))
+        x = F.relu(self.layer3(x))
+        x = self.layer4(x) # flatten
+
+        x = self.layer5(x)
+        return self.action(x)

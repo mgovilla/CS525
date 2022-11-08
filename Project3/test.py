@@ -12,7 +12,7 @@ import time
 from gym.wrappers.monitoring import video_recorder
 from tqdm import tqdm
 
-seed = 11037
+seed = 5
 
 def parse():
     parser = argparse.ArgumentParser(description="DS595/CS525 RL Project3")
@@ -75,10 +75,10 @@ def run(args):
 
     record_video: (bool) whether you need to record video
     '''
-    env = Environment('BreakoutNoFrameskip-v4', args, atari_wrapper=True, test=True, render_mode='human')
+    env = Environment('BreakoutNoFrameskip-v4', args, atari_wrapper=True, test=True, render_mode=None)
     from agent_dqn import Agent_DQN
     agent = Agent_DQN(env, args)
-    test(agent, env, total_episodes=10, record_video=False)
+    test(agent, env, total_episodes=10, record_video=True)
 
 
 if __name__ == '__main__':
