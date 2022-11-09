@@ -40,15 +40,16 @@ class Agent_DQN(Agent):
             # you can load your model here
             print('loading trained model')
             self.trained = True
-            self.policy_net = torch.load(f="trained_policy_2000.pth")
+            self.policy_net = torch.load(f="trained_policy_final.pth")
             self.policy_net.eval()
             return
 
 
         # create the nn model
         self.policy_net = DQN(*env.get_observation_space().shape,
-                              env.get_action_space().n, device=self.device)
+                            env.get_action_space().n, device=self.device)
         self.policy_net.to(self.device)
+
         self.target_net = DQN(*env.get_observation_space().shape,
                               env.get_action_space().n, device=self.device)
         self.target_net.load_state_dict(self.policy_net.state_dict())
@@ -61,13 +62,13 @@ class Agent_DQN(Agent):
         self.batch_size = 128 
 
         # constants
-        self.UPDATE_TARGET_FREQ = 500
+        self.UPDATE_TARGET_FREQ = 200
         self.gamma = 0.99
         self.iterations = 10000
         
         # epsilon
         self.epsilon = 1.0
-        self.decay_rate = (self.epsilon - 0.025) / (self.iterations * 30)
+        self.decay_rate = (self.epsilon - 0.025) / (self.iterations * 50)
 
     def decay_epsilon(self):
         self.epsilon =  max(self.epsilon - self.decay_rate, 0.025)
@@ -85,7 +86,7 @@ class Agent_DQN(Agent):
             # get max reward action
             actions = self.policy_net(torch.tensor(np.array([observation.transpose()]), device=self.device, dtype=torch.float))
             a = actions.max(1)[1].view(1, 1).item()
-            print(a, actions)
+            # print(a, actions)
             return a
 
     def make_action(self, observation, test=True):
@@ -158,18 +159,11 @@ class Agent_DQN(Agent):
         loss = criterion(state_action_values, expected_state_action_values.unsqueeze(1))
 
         # Optimize the model
-        a = list(self.policy_net.parameters())[0].clone()
-
         optimizer.zero_grad()
         loss.backward()
-        for param in self.policy_net.parameters():
-            param.grad.data.clamp_(-1, 1)
+        torch.nn.utils.clip_grad.clip_grad_value_(self.policy_net.parameters(), 1)
         optimizer.step()
 
-        b = list(self.policy_net.parameters())[0].clone()
-
-        print(torch.equal(a.data, b.data))
-        print(torch.equal(a.grad, b.grad))
 
     def train(self):
         """
@@ -185,8 +179,8 @@ class Agent_DQN(Agent):
             every C iterations, set target_net = policy_net
         """
 
-        optimizer = optim.Adam(self.policy_net.parameters(), lr=0.00025)
-        episode_rewards = []
+        optimizer = optim.Adam(self.policy_net.parameters())
+        all_rewards, episode_rewards = [], []
         for n in range(1, self.iterations+1):
             state = self.env.reset()
             total_reward = 0
@@ -217,10 +211,12 @@ class Agent_DQN(Agent):
             if n % self.UPDATE_TARGET_FREQ == 0:
                 print('updated target net')
                 print('overall average: ', np.average(episode_rewards))
+                all_rewards.extend(episode_rewards)
+                episode_rewards = []
                 print('epsilon: ', self.epsilon)
                 print('replay memory size: ', len(self.buffer))
                 self.target_net.load_state_dict(self.policy_net.state_dict())
                 torch.save(self.policy_net, f"trained_policy_{n}.pth")
 
-        print(episode_rewards)
+        print(all_rewards)
         torch.save(self.policy_net, "trained_policy_final.pth")
