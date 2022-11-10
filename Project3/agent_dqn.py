@@ -35,12 +35,14 @@ class Agent_DQN(Agent):
         """
 
         super(Agent_DQN, self).__init__(env)
-        self.device = "cuda"
+        self.device = "cuda" if torch.cuda.is_available() else "cpu"
         if args.test_dqn:
             # you can load your model here
             print('loading trained model')
             self.trained = True
-            self.policy_net = torch.load(f="trained_policy_final.pth")
+            map_location = None if torch.cuda.is_available() else torch.device('cpu')
+            self.policy_net = torch.load(f="trained_policy_final.pth", map_location=map_location)
+            self.policy_net.device = self.device
             self.policy_net.eval()
             return
 
@@ -62,7 +64,7 @@ class Agent_DQN(Agent):
         self.batch_size = 128 
 
         # constants
-        self.UPDATE_TARGET_FREQ = 200
+        self.UPDATE_TARGET_FREQ = 250
         self.gamma = 0.99
         self.iterations = 10000
         
@@ -111,7 +113,7 @@ class Agent_DQN(Agent):
                 actions = self.policy_net(torch.tensor(np.array([observation.transpose()]), device=self.device, dtype=torch.float)).to("cpu")
                 return actions.max(1)[1].view(1, 1)
 
-        return torch.tensor([[random.randrange(self.env.get_action_space().n)]], device="cpu", dtype=torch.long)
+        return torch.tensor([[random.randrange(self.env.get_action_space().n)]], device=self.device, dtype=torch.long)
 
     def push(self, sars: Tuple):
         """ You can add additional arguments as you need. 
@@ -179,7 +181,7 @@ class Agent_DQN(Agent):
             every C iterations, set target_net = policy_net
         """
 
-        optimizer = optim.Adam(self.policy_net.parameters())
+        optimizer = optim.Adam(self.policy_net.parameters(), lr=0.0005)
         all_rewards, episode_rewards = [], []
         for n in range(1, self.iterations+1):
             state = self.env.reset()
@@ -197,10 +199,10 @@ class Agent_DQN(Agent):
                 total_reward += reward
                 # record (s, a, r, s')
                 self.push(
-                    (torch.tensor(np.array([state.transpose()]), device="cpu", dtype=torch.float), 
+                    (torch.tensor(np.array([state.transpose()]), device=self.device, dtype=torch.float), 
                     action,
-                    torch.tensor([reward], device="cpu", dtype=torch.float),
-                    torch.tensor(np.array([next_state.transpose()]), device="cpu", dtype=torch.float) if not done else None))
+                    torch.tensor([reward], device=self.device, dtype=torch.float),
+                    torch.tensor(np.array([next_state.transpose()]), device=self.device, dtype=torch.float) if not done else None))
                 
                 state = next_state
 

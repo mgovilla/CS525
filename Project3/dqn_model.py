@@ -71,7 +71,7 @@ class DQN(nn.Module):
         x = F.relu(self.layer1(x))
         x = F.relu(self.layer2(x))
         x = F.relu(self.layer3(x))
-        x = self.layer4(x) # flatten
+        x = torch.sigmoid(self.layer4(x)) # flatten
 
-        x = self.layer5(x)
+        x = torch.sigmoid(self.layer5(x))
         return self.action(x)
