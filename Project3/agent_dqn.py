@@ -64,10 +64,10 @@ class Agent_DQN(Agent):
         self.batch_size = 128 
 
         # constants
-        self.UPDATE_TARGET_FREQ = 250
+        self.UPDATE_TARGET_FREQ = 200
         self.gamma = 0.99
-        self.iterations = 10000
-
+        self.iterations = 12000
+        
         # perform gradient descent every
         # self.update_freq = 4 
 
@@ -76,7 +76,7 @@ class Agent_DQN(Agent):
         
         # epsilon
         self.epsilon = 1.0
-        self.decay_rate = (self.epsilon - 0.025) / (self.iterations * 50)
+        self.decay_rate = self.action_repeat * (self.epsilon - 0.025) / (self.iterations * 50)
 
     def decay_epsilon(self):
         self.epsilon =  max(self.epsilon - self.decay_rate, 0.025)
