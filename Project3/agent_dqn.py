@@ -67,6 +67,12 @@ class Agent_DQN(Agent):
         self.UPDATE_TARGET_FREQ = 250
         self.gamma = 0.99
         self.iterations = 10000
+
+        # perform gradient descent every
+        # self.update_freq = 4 
+
+        # repeat the action x times 
+        self.action_repeat = 4
         
         # epsilon
         self.epsilon = 1.0
@@ -110,7 +116,7 @@ class Agent_DQN(Agent):
         if p > self.epsilon:
             with torch.no_grad():
                 # get max reward action
-                actions = self.policy_net(torch.tensor(np.array([observation.transpose()]), device=self.device, dtype=torch.float)).to("cpu")
+                actions = self.policy_net(torch.tensor(np.array([observation.transpose()]), device=self.device, dtype=torch.float))
                 return actions.max(1)[1].view(1, 1)
 
         return torch.tensor([[random.randrange(self.env.get_action_space().n)]], device=self.device, dtype=torch.long)
@@ -194,17 +200,22 @@ class Agent_DQN(Agent):
                 # pick an action
                 action = self.make_action(state, False)
 
-                # play a step in the game based on the policy net
-                next_state, reward, done, _, _ = self.env.step(action.item())
-                total_reward += reward
-                # record (s, a, r, s')
-                self.push(
-                    (torch.tensor(np.array([state.transpose()]), device=self.device, dtype=torch.float), 
-                    action,
-                    torch.tensor([reward], device=self.device, dtype=torch.float),
-                    torch.tensor(np.array([next_state.transpose()]), device=self.device, dtype=torch.float) if not done else None))
+                # repeat the action n times
+                for _ in range(self.action_repeat):
+                    # play a step in the game based on the policy net
+                    next_state, reward, done, _, _ = self.env.step(action.item())
+                    total_reward += reward
+                    # record (s, a, r, s')
+                    self.push(
+                        (torch.tensor(np.array([state.transpose()]), device=self.device, dtype=torch.float), 
+                        action,
+                        torch.tensor([reward], device=self.device, dtype=torch.float),
+                        torch.tensor(np.array([next_state.transpose()]), device=self.device, dtype=torch.float) if not done else None))
                 
-                state = next_state
+                    if done:
+                        break
+
+                    state = next_state
 
                 self.optimize_model(optimizer)
 
