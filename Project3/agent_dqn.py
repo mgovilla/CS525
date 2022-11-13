@@ -46,7 +46,6 @@ class Agent_DQN(Agent):
             self.policy_net.eval()
             return
 
-
         # create the nn model
         self.policy_net = DQN(*env.get_observation_space().shape,
                             env.get_action_space().n, device=self.device)
@@ -61,33 +60,30 @@ class Agent_DQN(Agent):
 
         # create replay buffer
         self.buffer = deque(maxlen=100000)
-        self.batch_size = 128 
+        self.batch_size = 64 
 
         # constants
-        self.UPDATE_TARGET_FREQ = 200
+        self.UPDATE_TARGET_FREQ = 10000
         self.gamma = 0.99
-        self.iterations = 12000
+        self.max_frames = 1000000
+        self.init_random_frames = 25000
         
         # perform gradient descent every
-        # self.update_freq = 4 
-
-        # repeat the action x times 
         self.action_repeat = 4
-        
+
         # epsilon
         self.epsilon = 1.0
-        self.decay_rate = self.action_repeat * (self.epsilon - 0.025) / (self.iterations * 50)
+        self.epsilon_max_frames = 250000
+        
+        self.decay_rate = (self.epsilon - 0.025) / (self.epsilon_max_frames)
 
     def decay_epsilon(self):
         self.epsilon =  max(self.epsilon - self.decay_rate, 0.025)
 
     def init_game_setting(self):
         """
-        Testing function will call this function at the begining of new game
-        Put anything you want to initialize if necessary.
-        If no parameters need to be initialized, you can leave it as blank.
+        Initialize the replay buffer with some random frames
         """
-        pass
 
     def make_action_test(self, observation): 
         with torch.no_grad():
@@ -187,49 +183,53 @@ class Agent_DQN(Agent):
             every C iterations, set target_net = policy_net
         """
 
-        optimizer = optim.Adam(self.policy_net.parameters(), lr=0.0005)
-        all_rewards, episode_rewards = [], []
-        for n in range(1, self.iterations+1):
-            state = self.env.reset()
-            total_reward = 0
-            # play an episode (until termination)
-            done = False
-            while not done:
-                # decay epsilon 
+        optimizer = optim.Adam(self.policy_net.parameters(), lr=0.00001)
+        all_rewards, episode_rewards, epsilons, frames, total_reward, done = [], [], [], 0, 0, True
+        while frames < self.max_frames:
+            if done:
+                state = self.env.reset()
+                episode_rewards.append(total_reward)
+                total_reward = 0
+
+            # decay epsilon after the initial period
+            if frames > self.init_random_frames:
                 self.decay_epsilon()
-                # pick an action
-                action = self.make_action(state, False)
+                epsilons.append(self.epsilon)
 
-                # repeat the action n times
-                for _ in range(self.action_repeat):
-                    # play a step in the game based on the policy net
-                    next_state, reward, done, _, _ = self.env.step(action.item())
-                    total_reward += reward
-                    # record (s, a, r, s')
-                    self.push(
-                        (torch.tensor(np.array([state.transpose()]), device=self.device, dtype=torch.float), 
-                        action,
-                        torch.tensor([reward], device=self.device, dtype=torch.float),
-                        torch.tensor(np.array([next_state.transpose()]), device=self.device, dtype=torch.float) if not done else None))
-                
-                    if done:
-                        break
+            # pick an action
+            action = self.make_action(state, False)
+            frames += 1
 
-                    state = next_state
+            # repeat the action n times
+            for _ in range(self.action_repeat):
+                # play a step in the game based on the policy net
+                next_state, reward, done, _, _ = self.env.step(action.item())
+                total_reward += reward
+                # record (s, a, r, s')
+                self.push(
+                    (torch.tensor(np.array([state.transpose()]), device=self.device, dtype=torch.float), 
+                    action,
+                    torch.tensor([reward], device=self.device, dtype=torch.float),
+                    torch.tensor(np.array([next_state.transpose()]), device=self.device, dtype=torch.float) if not done else None))
+            
+                if done:
+                    break
 
-                self.optimize_model(optimizer)
+                state = next_state
 
-            episode_rewards.append(total_reward)
+            self.optimize_model(optimizer)
 
-            if n % self.UPDATE_TARGET_FREQ == 0:
-                print('updated target net')
-                print('overall average: ', np.average(episode_rewards))
-                all_rewards.extend(episode_rewards)
-                episode_rewards = []
-                print('epsilon: ', self.epsilon)
-                print('replay memory size: ', len(self.buffer))
+            if frames > self.init_random_frames and frames % self.UPDATE_TARGET_FREQ == 0:
+                # print('updated target net')
+                # print('overall average: ', np.average(episode_rewards))
+                # all_rewards.extend(episode_rewards)
+                # episode_rewards = []
+                # print('epsilon: ', self.epsilon)
+                # print('replay memory size: ', len(self.buffer))
                 self.target_net.load_state_dict(self.policy_net.state_dict())
-                torch.save(self.policy_net, f"trained_policy_{n}.pth")
+                torch.save(self.policy_net, f"trained_policy_{frames}.pth")
 
-        print(all_rewards)
+        print(epsilons)
+        print(episode_rewards)
+        print(frames)
         torch.save(self.policy_net, "trained_policy_final.pth")
