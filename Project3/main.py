@@ -14,6 +14,7 @@ def parse():
     parser.add_argument('--env_name', default=None, help='environment name')
     parser.add_argument('--train_dqn', action='store_true', help='whether train DQN')
     parser.add_argument('--test_dqn', action='store_true', help='whether test DQN')
+    parser.add_argument('--train_from_save', action='store_true', help='whether training from save DQN')
     try:
         from argument import add_arguments
         parser = add_arguments(parser)

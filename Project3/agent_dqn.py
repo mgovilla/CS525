@@ -46,10 +46,36 @@ class Agent_DQN(Agent):
             self.policy_net.eval()
             return
 
-        # create the nn model
-        self.policy_net = DQN(*env.get_observation_space().shape,
-                            env.get_action_space().n, device=self.device)
-        self.policy_net.to(self.device)
+        if args.train_from_save:
+            map_location = None if torch.cuda.is_available() else torch.device('cpu')
+            self.policy_net = torch.load(f="trained_policy_final.pth", map_location=map_location)
+            self.policy_net.device = self.device
+            
+            # epsilon
+            self.epsilon = 0.025
+            self.decay_rate = 0
+
+            # create replay buffer
+            self.buffer = deque(maxlen=10000)
+            self.batch_size = 64 
+
+            self.init_random_frames = 0
+        else: 
+            # create the nn model
+            self.policy_net = DQN(*env.get_observation_space().shape,
+                                env.get_action_space().n, device=self.device)
+            self.policy_net.to(self.device)
+
+            # epsilon
+            self.epsilon = 1.0
+            self.epsilon_max_frames = 250000
+            
+            self.decay_rate = (self.epsilon - 0.025) / (self.epsilon_max_frames)
+            
+            # create replay buffer
+            self.buffer = deque(maxlen=100000)
+            self.batch_size = 64 
+            self.init_random_frames = 25000 
 
         self.target_net = DQN(*env.get_observation_space().shape,
                               env.get_action_space().n, device=self.device)
@@ -58,24 +84,13 @@ class Agent_DQN(Agent):
         self.target_net.eval()
         self.trained = False
 
-        # create replay buffer
-        self.buffer = deque(maxlen=100000)
-        self.batch_size = 64 
-
         # constants
-        self.UPDATE_TARGET_FREQ = 10000
+        self.UPDATE_TARGET_FREQ = 2500
         self.gamma = 0.99
         self.max_frames = 1000000
-        self.init_random_frames = 25000
         
         # perform gradient descent every
-        self.action_repeat = 4
-
-        # epsilon
-        self.epsilon = 1.0
-        self.epsilon_max_frames = 250000
-        
-        self.decay_rate = (self.epsilon - 0.025) / (self.epsilon_max_frames)
+        self.update_model = 4
 
     def decay_epsilon(self):
         self.epsilon =  max(self.epsilon - self.decay_rate, 0.025)
@@ -184,7 +199,7 @@ class Agent_DQN(Agent):
         """
 
         optimizer = optim.Adam(self.policy_net.parameters(), lr=0.00001)
-        all_rewards, episode_rewards, epsilons, frames, total_reward, done = [], [], [], 0, 0, True
+        episode_rewards, frames, total_reward, done = [], 0, 0, True
         while frames < self.max_frames:
             if done:
                 state = self.env.reset()
@@ -194,32 +209,28 @@ class Agent_DQN(Agent):
             # decay epsilon after the initial period
             if frames > self.init_random_frames:
                 self.decay_epsilon()
-                epsilons.append(self.epsilon)
 
             # pick an action
             action = self.make_action(state, False)
             frames += 1
 
-            # repeat the action n times
-            for _ in range(self.action_repeat):
-                # play a step in the game based on the policy net
-                next_state, reward, done, _, _ = self.env.step(action.item())
-                total_reward += reward
-                # record (s, a, r, s')
-                self.push(
-                    (torch.tensor(np.array([state.transpose()]), device=self.device, dtype=torch.float), 
-                    action,
-                    torch.tensor([reward], device=self.device, dtype=torch.float),
-                    torch.tensor(np.array([next_state.transpose()]), device=self.device, dtype=torch.float) if not done else None))
-            
-                if done:
-                    break
+            # play a step in the game based on the policy net
+            next_state, reward, done, _, _ = self.env.step(action.item())
+            total_reward += reward
+            # record (s, a, r, s')
+            self.push(
+                (torch.tensor(np.array([state.transpose()]), device=self.device, dtype=torch.float), 
+                action,
+                torch.tensor([reward], device=self.device, dtype=torch.float),
+                torch.tensor(np.array([next_state.transpose()]), device=self.device, dtype=torch.float) if not done else None))
 
-                state = next_state
 
-            self.optimize_model(optimizer)
+            state = next_state
 
-            if frames > self.init_random_frames and frames % self.UPDATE_TARGET_FREQ == 0:
+            if frames > self.init_random_frames and frames % self.update_model == 0:
+                self.optimize_model(optimizer)
+
+            if frames > self.init_random_frames and frames % (self.UPDATE_TARGET_FREQ*self.update_model) == 0:
                 # print('updated target net')
                 # print('overall average: ', np.average(episode_rewards))
                 # all_rewards.extend(episode_rewards)
@@ -227,9 +238,8 @@ class Agent_DQN(Agent):
                 # print('epsilon: ', self.epsilon)
                 # print('replay memory size: ', len(self.buffer))
                 self.target_net.load_state_dict(self.policy_net.state_dict())
-                torch.save(self.policy_net, f"trained_policy_{frames}.pth")
+                torch.save(self.policy_net, f"trained_3/trained_policy_{frames}.pth")
 
-        print(epsilons)
         print(episode_rewards)
         print(frames)
-        torch.save(self.policy_net, "trained_policy_final.pth")
+        torch.save(self.policy_net, "trained_policy_final_p2.pth")
